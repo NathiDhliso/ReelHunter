@@ -1,0 +1,15 @@
+Recruiter Scorecard
+src/pages/ScorecardsPage.tsx: This is the main page component that renders the Recruiter Scorecard.
+src/components/scorecards/RecruiterScorecard.tsx: This component contains the UI and logic for displaying the recruiter scorecards, including ratings, feedback, and filtering options.
+src/App.tsx: This file defines the route (/scorecards) that links to the ScorecardsPage.
+src/components/layout/DashboardLayout.tsx: This file includes the navigation item for "Recruiter Scorecards" in the sidebar, allowing users to access the page.
+Database Schema (recruiter_scorecards table and recruiter_ratings_summary view): These define the data structure for storing and summarizing recruiter ratings.
+
+src/components/reelpass/ReelPassDashboard.tsx: This is the primary component that displays the ReelPass verification status, scoring breakdown, and verification categories.
+src/pages/SettingsPage.tsx: The ReelPass dashboard is integrated as a tab within the Settings page, allowing users to view and manage their verification status.
+src/components/candidates/CandidateCard.tsx: This component displays the ReelPass score and verification status for individual candidates in search results.
+
+src/components/search/SearchInterface.tsx: This component includes a filter option to search for "ReelPass Verified Only" candidates.
+Database Schema (profiles table with completion_score, sa_reelpass_status view, and various verification tables like sa_identity_verifications, sa_bee_verifications, etc.): These tables and views store the data that contributes to a candidate's ReelPass score and verification status.
+Supabase Edge Functions (supabase/functions/government-verification/index.ts and supabase/functions/sa-government-verification/index.ts): These functions handle the logic for verifying credentials with government agencies and updating the ReelPass status.
+UPDATED_SCORING_SYSTEM.md: This markdown file details the scoring methodology for the ReelPass system, including the new ReelPersona assessment.
