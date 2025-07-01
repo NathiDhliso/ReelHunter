@@ -3,8 +3,9 @@ import { useAuth } from '../../hooks/useAuth'
 import LoginModal from '../modals/LoginModal'
 
 const LoginManager: React.FC = () => {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, authChecked } = useAuth()
   const [showLogin, setShowLogin] = useState(false)
+  const [userInteracted, setUserInteracted] = useState(false)
 
   useEffect(() => {
     // If user is authenticated, don't show login modal
@@ -13,36 +14,56 @@ const LoginManager: React.FC = () => {
       return
     }
 
-    // Add global click listener to capture any click when not authenticated
-    const handleGlobalClick = (e: MouseEvent) => {
-      // Don't show modal if it's already showing
-      if (showLogin) return
+    // Only show login modal if auth check is complete and user is not authenticated
+    // AND user has interacted with the page
+    if (authChecked && !isAuthenticated && userInteracted) {
+      // Show login modal after a brief delay to avoid immediate popup
+      const timer = setTimeout(() => {
+        setShowLogin(true)
+      }, 1000)
       
-      // Don't show modal if clicking on the modal itself
-      const target = e.target as HTMLElement
-      if (target.closest('[data-login-modal]')) return
-      
-      // Show login modal on any click when not authenticated
-      setShowLogin(true)
+      return () => clearTimeout(timer)
+    }
+  }, [isAuthenticated, authChecked, userInteracted])
+
+  useEffect(() => {
+    // Track user interaction to avoid immediate login popup
+    const handleUserInteraction = () => {
+      setUserInteracted(true)
     }
 
-    // Add the event listener to capture all clicks
-    document.addEventListener('click', handleGlobalClick, true)
+    // Listen for meaningful user interactions
+    document.addEventListener('click', handleUserInteraction, { once: true })
+    document.addEventListener('keydown', handleUserInteraction, { once: true })
+    document.addEventListener('scroll', handleUserInteraction, { once: true })
     
-    // Cleanup function
     return () => {
-      document.removeEventListener('click', handleGlobalClick, true)
+      document.removeEventListener('click', handleUserInteraction)
+      document.removeEventListener('keydown', handleUserInteraction)
+      document.removeEventListener('scroll', handleUserInteraction)
     }
-  }, [isAuthenticated, showLogin])
+  }, [])
 
-  // Don't render anything if user is authenticated
-  if (isAuthenticated) return null
+  // Don't render anything if auth is still loading or user is authenticated
+  if (!authChecked || isAuthenticated) return null
 
   return showLogin ? (
     <div data-login-modal>
       <LoginModal onClose={() => setShowLogin(false)} />
     </div>
-  ) : null
+  ) : (
+    // Show a subtle banner instead of immediate modal
+    <div className="fixed bottom-4 right-4 bg-blue-600 text-white p-4 rounded-lg shadow-lg max-w-sm z-50">
+      <p className="text-sm mb-2">Authentication Required</p>
+      <p className="text-xs mb-3">Please log in to view your stats and reviews.</p>
+      <button
+        onClick={() => setShowLogin(true)}
+        className="bg-white text-blue-600 px-3 py-1 rounded text-sm font-medium hover:bg-gray-100 transition-colors"
+      >
+        Log In
+      </button>
+    </div>
+  )
 }
 
 export default LoginManager
