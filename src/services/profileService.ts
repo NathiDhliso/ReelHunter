@@ -1,6 +1,86 @@
 import { supabase } from './supabase'
-import type { Profile, Skill, AvailabilityUpdate } from './supabase'
+import type { Database } from '../types/supabase'
 
+// Type aliases for better readability
+type Profile = Database['public']['Tables']['profiles']['Row']
+type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
+type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
+type Skill = Database['public']['Tables']['skills']['Row']
+type AvailabilityUpdate = Database['public']['Tables']['availability_updates']['Row']
+
+// Core profile functions as requested
+export const getProfile = async (userId: string): Promise<Profile | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(`
+        id,
+        user_id,
+        email,
+        first_name,
+        last_name,
+        username,
+        avatar_url,
+        bio,
+        headline,
+        location,
+        phone,
+        province,
+        languages,
+        bee_status,
+        sa_id_number,
+        tax_number,
+        linkedin_url,
+        github_url,
+        website,
+        work_permit_status,
+        completion_score,
+        reelpass_verified,
+        role,
+        is_deleted,
+        created_at,
+        updated_at
+      `)
+      .eq('user_id', userId)
+      .single()
+
+    if (error) {
+      console.error('Error fetching profile:', error)
+      return null
+    }
+
+    return data
+  } catch (error) {
+    console.error('Error in getProfile:', error)
+    return null
+  }
+}
+
+export const updateProfile = async (userId: string, updates: Partial<ProfileUpdate>): Promise<Profile | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error updating profile:', error)
+      return null
+    }
+
+    return data
+  } catch (error) {
+    console.error('Error in updateProfile:', error)
+    return null
+  }
+}
+
+// Legacy functions - keeping for backward compatibility
 export async function updateCandidateProfile(
   userId: string,
   profileData: {
@@ -8,9 +88,9 @@ export async function updateCandidateProfile(
     lastName?: string
     headline?: string
     completionScore?: number
-    province?: string
-    beeStatus?: string
-    languages?: string[]
+    province?: Database['public']['Enums']['sa_province']
+    beeStatus?: Database['public']['Enums']['bee_level']
+    languages?: Database['public']['Enums']['sa_language'][]
   }
 ): Promise<Profile | null> {
   try {
@@ -58,12 +138,12 @@ export async function updateCandidateProfile(
 export async function updateCandidateAvailability(
   userId: string,
   availabilityData: {
-    status: 'available' | 'open' | 'not-looking'
+    status: Database['public']['Enums']['availability_status']
     availableFrom?: string
     noticePeriodDays?: number
     salaryMin?: number
     salaryMax?: number
-    preferredWorkType?: 'remote' | 'hybrid' | 'onsite' | 'flexible'
+    preferredWorkType?: string
     locationPreferences?: string[]
     notes?: string
   }
@@ -130,6 +210,7 @@ export async function addCandidateSkill(
     videoVerified?: boolean
     videoUrl?: string
     proficiency?: string
+    yearsExperience?: number
   }
 ): Promise<Skill | null> {
   try {
@@ -154,7 +235,8 @@ export async function addCandidateSkill(
         verified: skillData.verified || false,
         video_verified: skillData.videoVerified || false,
         video_demo_url: skillData.videoUrl,
-        proficiency: skillData.proficiency
+        proficiency: skillData.proficiency,
+        years_experience: skillData.yearsExperience
       })
       .select()
       .single()
@@ -171,25 +253,8 @@ export async function addCandidateSkill(
   }
 }
 
-export async function getCandidateProfile(userId: string): Promise<Profile | null> {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
-
-    if (error) {
-      console.error('Error fetching profile:', error)
-      return null
-    }
-
-    return data
-  } catch (error) {
-    console.error('Error in getCandidateProfile:', error)
-    return null
-  }
-}
+// Alias for backward compatibility
+export const getCandidateProfile = getProfile
 
 export async function getCandidateSkills(profileId: string): Promise<Skill[]> {
   try {

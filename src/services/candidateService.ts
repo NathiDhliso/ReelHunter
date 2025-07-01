@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
-import type { LiveCandidateAvailability } from './supabase'
+import type { Database } from '../types/supabase'
+
+// Type aliases for better readability
+type LiveCandidateAvailability = Database['public']['Views']['live_candidate_availability']['Row']
 
 export interface SearchFilters {
   skills?: string[]
@@ -24,7 +27,7 @@ export interface CandidateSearchResult {
   email: string
   reelpassScore: number
   verificationStatus: 'verified' | 'partial' | 'unverified'
-  availabilityStatus: 'available' | 'open' | 'not-looking'
+  availabilityStatus: Database['public']['Enums']['availability_status'] | 'not-looking'
   availableFrom?: string
   noticePeriodDays?: number
   salaryExpectationMin?: number
@@ -34,9 +37,9 @@ export interface CandidateSearchResult {
   skills: string[]
   lastActive: string
   currency?: string
-  province?: string
-  beeStatus?: string
-  languages?: string[]
+  province?: Database['public']['Enums']['sa_province']
+  beeStatus?: Database['public']['Enums']['bee_level']
+  languages?: Database['public']['Enums']['sa_language'][]
 }
 
 export async function searchCandidates(
@@ -61,7 +64,7 @@ export async function searchCandidates(
 
     // Apply availability filter
     if (filters.availability) {
-      const availabilityMap: Record<string, string> = {
+      const availabilityMap: Record<string, Database['public']['Enums']['availability_status']> = {
         'Available immediately': 'available',
         'Available in 2 weeks': 'available',
         'Available in 1 month': 'available',
@@ -88,12 +91,13 @@ export async function searchCandidates(
 
     // Apply province filter (SA specific)
     if (filters.province) {
-      queryBuilder = queryBuilder.eq('province', filters.province.toLowerCase().replace(' ', '_'))
+      const provinceValue = filters.province.toLowerCase().replace(' ', '_') as Database['public']['Enums']['sa_province']
+      queryBuilder = queryBuilder.eq('province', provinceValue)
     }
 
     // Apply BEE level filter (SA specific)
     if (filters.beeLevel) {
-      const beeLevel = filters.beeLevel.toLowerCase().replace(/\s+/g, '_')
+      const beeLevel = filters.beeLevel.toLowerCase().replace(/\s+/g, '_') as Database['public']['Enums']['bee_level']
       queryBuilder = queryBuilder.eq('bee_status', beeLevel)
     }
 
@@ -110,7 +114,7 @@ export async function searchCandidates(
     }
 
     // Get skills for each candidate
-    const candidateIds = data.map(candidate => candidate.candidate_id)
+    const candidateIds = data.map(candidate => candidate.candidate_id).filter((id): id is string => Boolean(id))
     const { data: skillsData } = await supabase
       .from('skills')
       .select('profile_id, name, verified')
@@ -127,16 +131,16 @@ export async function searchCandidates(
 
     // Transform the data to match our interface
     const candidates: CandidateSearchResult[] = data.map((candidate: LiveCandidateAvailability) => {
-      const skills = skillsByProfile[candidate.candidate_id] || []
+      const skills = skillsByProfile[candidate.candidate_id || ''] || []
       
       return {
-        id: candidate.candidate_id,
+        id: candidate.candidate_id || '',
         firstName: candidate.first_name || '',
         lastName: candidate.last_name || '',
         headline: candidate.headline || 'Professional',
-        email: candidate.email,
+        email: candidate.email || '',
         reelpassScore: candidate.reelpass_score || 0,
-        verificationStatus: candidate.verification_status,
+        verificationStatus: candidate.verification_status as 'verified' | 'partial' | 'unverified' || 'unverified',
         availabilityStatus: candidate.availability_status || 'not-looking',
         availableFrom: candidate.available_from || undefined,
         noticePeriodDays: candidate.notice_period_days || undefined,
@@ -148,7 +152,8 @@ export async function searchCandidates(
         lastActive: candidate.availability_updated_at || new Date().toISOString(),
         currency: filters.currency || 'USD',
         province: candidate.province || undefined,
-        beeStatus: candidate.bee_status || undefined
+        beeStatus: candidate.bee_status || undefined,
+        languages: [] // Will be populated if needed
       }
     })
 
@@ -168,7 +173,7 @@ export async function searchCandidates(
       return candidates.filter(candidate => 
         candidate.languages && 
         filters.languages!.some(lang => 
-          candidate.languages!.includes(lang as any)
+          candidate.languages!.includes(lang as Database['public']['Enums']['sa_language'])
         )
       )
     }
@@ -198,37 +203,30 @@ export async function getCandidateById(id: string): Promise<CandidateSearchResul
         updated_at,
         skills (
           name,
-          verified
-        ),
-        availability_updates!inner (
-          availability_status,
-          available_from,
-          notice_period_days,
-          salary_expectation_min,
-          salary_expectation_max,
-          preferred_work_type,
-          location_preferences,
-          is_active
+          verified,
+          proficiency,
+          years_experience
         )
       `)
       .eq('id', id)
-      .eq('role', 'candidate')
-      .eq('availability_updates.is_active', true)
       .single()
 
-    if (error || !data) {
+    if (error) {
+      console.error('Error fetching candidate:', error)
       return null
     }
 
-    const availability = data.availability_updates?.[0] || {}
-    const skills = data.skills?.map((s: any) => s.name) || []
-    
-    let verificationStatus: 'verified' | 'partial' | 'unverified' = 'unverified'
-    if (data.completion_score >= 80) {
-      verificationStatus = 'verified'
-    } else if (data.completion_score >= 60) {
-      verificationStatus = 'partial'
+    if (!data) {
+      return null
     }
+
+    // Get availability data
+    const { data: availabilityData } = await supabase
+      .from('availability_updates')
+      .select('*')
+      .eq('profile_id', data.id)
+      .eq('is_active', true)
+      .maybeSingle()
 
     return {
       id: data.id,
@@ -237,24 +235,22 @@ export async function getCandidateById(id: string): Promise<CandidateSearchResul
       headline: data.headline || 'Professional',
       email: data.email,
       reelpassScore: data.completion_score || 0,
-      verificationStatus,
-      availabilityStatus: availability.availability_status || 'not-looking',
-      availableFrom: availability.available_from,
-      noticePeriodDays: availability.notice_period_days,
-      salaryExpectationMin: availability.salary_expectation_min,
-      salaryExpectationMax: availability.salary_expectation_max,
-      preferredWorkType: availability.preferred_work_type,
-      locationPreferences: availability.location_preferences || [],
-      skills,
-      lastActive: data.updated_at,
-      currency: 'USD',
+      verificationStatus: 'unverified', // Would need to calculate this
+      availabilityStatus: availabilityData?.availability_status || 'not-looking',
+      availableFrom: availabilityData?.available_from || undefined,
+      noticePeriodDays: availabilityData?.notice_period_days || undefined,
+      salaryExpectationMin: availabilityData?.salary_expectation_min || undefined,
+      salaryExpectationMax: availabilityData?.salary_expectation_max || undefined,
+      preferredWorkType: availabilityData?.preferred_work_type || undefined,
+      locationPreferences: availabilityData?.location_preferences || [],
+      skills: Array.isArray(data.skills) ? data.skills.map((skill: { name: string }) => skill.name) : [],
+      lastActive: data.updated_at || new Date().toISOString(),
       province: data.province || undefined,
       beeStatus: data.bee_status || undefined,
       languages: data.languages || []
     }
-
   } catch (error) {
-    console.error('Error fetching candidate:', error)
+    console.error('Error getting candidate by ID:', error)
     return null
   }
 }

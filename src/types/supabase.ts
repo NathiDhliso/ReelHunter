@@ -653,6 +653,7 @@ export type Database = {
           github_url: string | null
           headline: string | null
           id: string
+          is_deleted: boolean | null
           languages: Database["public"]["Enums"]["sa_language"][] | null
           last_name: string | null
           linkedin_url: string | null
@@ -664,7 +665,8 @@ export type Database = {
           sa_id_number: string | null
           tax_number: string | null
           updated_at: string | null
-          user_id: string | null
+          user_id: string
+          username: string | null
           website: string | null
           work_permit_status: string | null
         }
@@ -679,6 +681,7 @@ export type Database = {
           github_url?: string | null
           headline?: string | null
           id?: string
+          is_deleted?: boolean | null
           languages?: Database["public"]["Enums"]["sa_language"][] | null
           last_name?: string | null
           linkedin_url?: string | null
@@ -690,7 +693,8 @@ export type Database = {
           sa_id_number?: string | null
           tax_number?: string | null
           updated_at?: string | null
-          user_id?: string | null
+          user_id: string
+          username?: string | null
           website?: string | null
           work_permit_status?: string | null
         }
@@ -705,6 +709,7 @@ export type Database = {
           github_url?: string | null
           headline?: string | null
           id?: string
+          is_deleted?: boolean | null
           languages?: Database["public"]["Enums"]["sa_language"][] | null
           last_name?: string | null
           linkedin_url?: string | null
@@ -716,7 +721,8 @@ export type Database = {
           sa_id_number?: string | null
           tax_number?: string | null
           updated_at?: string | null
-          user_id?: string | null
+          user_id?: string
+          username?: string | null
           website?: string | null
           work_permit_status?: string | null
         }
@@ -915,6 +921,27 @@ export type Database = {
             referencedColumns: ["profile_id"]
           },
         ]
+      }
+      roles: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          role_name: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          role_name: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          role_name?: string
+        }
+        Relationships: []
       }
       sa_bee_verifications: {
         Row: {
@@ -1535,6 +1562,39 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          assigned_at: string | null
+          role_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          role_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string | null
+          role_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_user_roles_role_id"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       live_candidate_availability: {
@@ -1606,6 +1666,41 @@ export type Database = {
       calculate_sa_reelpass_score: {
         Args: { candidate_profile_id: string }
         Returns: number
+      }
+      is_user_role: {
+        Args: { p_role_name: string }
+        Returns: boolean
+      }
+      update_profile_details: {
+        Args: { p_username?: string; p_avatar_url?: string }
+        Returns: {
+          avatar_url: string | null
+          bee_status: Database["public"]["Enums"]["bee_level"] | null
+          bio: string | null
+          completion_score: number | null
+          created_at: string | null
+          email: string
+          first_name: string | null
+          github_url: string | null
+          headline: string | null
+          id: string
+          is_deleted: boolean | null
+          languages: Database["public"]["Enums"]["sa_language"][] | null
+          last_name: string | null
+          linkedin_url: string | null
+          location: string | null
+          phone: string | null
+          province: Database["public"]["Enums"]["sa_province"] | null
+          reelpass_verified: boolean | null
+          role: Database["public"]["Enums"]["user_role"]
+          sa_id_number: string | null
+          tax_number: string | null
+          updated_at: string | null
+          user_id: string
+          username: string | null
+          website: string | null
+          work_permit_status: string | null
+        }
       }
     }
     Enums: {

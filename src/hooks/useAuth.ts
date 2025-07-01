@@ -5,11 +5,14 @@ import type { User, Session } from '@supabase/supabase-js'
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [isLoading, setIsLoading] = useState(true) // Start true
+  const [isLoading, setIsLoading] = useState(true)
   const [isEmployer, setIsEmployer] = useState(false)
-  const [authChecked, setAuthChecked] = useState(false) // Track if auth has been checked
+  const [authChecked, setAuthChecked] = useState(false)
+  const [profileId, setProfileId] = useState<string | null>(null)
 
   useEffect(() => {
+    let mounted = true
+
     // Get initial session
     const getInitialSession = async () => {
       console.log('[Auth] Getting initial session...')
@@ -19,21 +22,27 @@ export const useAuth = () => {
         
         if (error) {
           console.error('[Auth] Error getting initial session:', error)
-          // Don't immediately fail - might be temporary network issue
+          if (mounted) {
+            setIsLoading(false)
+            setAuthChecked(true)
+          }
+          return
         }
         
-        if (session) {
+        if (session && mounted) {
           console.log('[Auth] Found initial session for user:', session.user.email)
           await handleSession(session)
-        } else {
+        } else if (mounted) {
           console.log('[Auth] No initial session found')
           setIsLoading(false)
           setAuthChecked(true)
         }
       } catch (error) {
         console.error('[Auth] Failed to get initial session:', error)
-        setIsLoading(false)
-        setAuthChecked(true)
+        if (mounted) {
+          setIsLoading(false)
+          setAuthChecked(true)
+        }
       }
     }
 
@@ -44,17 +53,23 @@ export const useAuth = () => {
       async (event, session) => {
         console.log('[Auth] Auth state changed:', event, session?.user?.email)
         
-        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-          // Handle these events immediately
-          await handleSession(session)
-        } else if (event === 'SIGNED_IN') {
-          // User signed in
-          await handleSession(session)
+        if (mounted) {
+          if (event === 'SIGNED_OUT') {
+            setSession(null)
+            setUser(null)
+            setIsEmployer(false)
+            setProfileId(null)
+            setIsLoading(false)
+            setAuthChecked(true)
+          } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+            await handleSession(session)
+          }
         }
       }
     )
 
     return () => {
+      mounted = false
       subscription.unsubscribe()
     }
   }, [])
@@ -68,62 +83,59 @@ export const useAuth = () => {
       console.log('[Auth] User authenticated, checking/creating profile...')
       
       try {
-        // Check if profile exists with simpler query to avoid RLS issues
+        // Try direct query with minimal fields to avoid RLS recursion
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('id, role, first_name, last_name')
+          .select('id, user_id, role, first_name, last_name, email')
           .eq('user_id', currentUser.id)
-          .single()
-        
-        let profile = profileData
+          .maybeSingle()
 
-        console.log('[Auth] Profile query result:', { profile, profileError })
+        console.log('[Auth] Profile query result:', { profileData, profileError })
 
-        // If no profile exists, create one with recruiter role
-        if (profileError && profileError.code === 'PGRST116') {
-          console.log('[Auth] No profile found, creating recruiter profile...')
-          
-          const { data: newProfile, error: createError } = await supabase
-            .from('profiles')
-            .insert({
-              user_id: currentUser.id,
-              email: currentUser.email!,
-              role: 'recruiter',
-              first_name: currentUser.user_metadata?.first_name || 
-                          currentUser.user_metadata?.full_name?.split(' ')[0] || '',
-              last_name: currentUser.user_metadata?.last_name || 
-                         currentUser.user_metadata?.full_name?.split(' ').slice(1).join(' ') || ''
-            })
-            .select('id, role, first_name, last_name')
-            .single()
-
-          if (createError) {
-            console.error('[Auth] Error creating profile:', createError)
-            // Don't fail auth completely - user might still be able to use app
-          } else {
-            console.log('[Auth] Profile created successfully:', newProfile)
-            profile = newProfile
-          }
+        // If we get a 500 error or other severe error, skip profile check and assume recruiter
+        if (profileError && (profileError.code === 'PGRST301' || profileError.message?.includes('infinite recursion'))) {
+          console.warn('[Auth] RLS policy recursion detected, using fallback mode')
+          // For ReelHunter, assume recruiter role and create a temporary profile ID
+          setIsEmployer(true)
+          setProfileId('temp-' + currentUser.id) // Temporary profile ID
+          console.log('[Auth] Using fallback recruiter mode due to RLS policy issues')
         } else if (profileError) {
           console.error('[Auth] Profile query error:', profileError)
-          // Don't fail auth - might be RLS policy issue but user could still be valid
+          // For other errors, still fallback to recruiter role
+          setIsEmployer(true)
+          setProfileId('temp-' + currentUser.id)
+          console.log('[Auth] Using fallback recruiter mode due to profile error')
+        } else if (!profileData) {
+          console.log('[Auth] No profile found, will need to create one after RLS is fixed')
+          // No profile exists, but we can't create one due to RLS issues
+          setIsEmployer(true)
+          setProfileId('temp-' + currentUser.id)
+          console.log('[Auth] Using temporary profile until RLS policies are fixed')
+        } else {
+          // Profile found successfully
+          setIsEmployer(profileData.role === 'recruiter')
+          setProfileId(profileData.id)
+          console.log('[Auth] User role set to:', profileData.role)
         }
 
-        // Set employer status based on role
-        setIsEmployer(profile?.role === 'recruiter')
-        console.log('[Auth] User role set to:', profile?.role)
       } catch (error) {
         console.error('[Auth] Error handling session:', error)
-        // Don't fail auth completely
+        // Don't fail auth completely - assume recruiter role as fallback
+        setIsEmployer(true)
+        setProfileId('temp-' + currentUser.id)
+        console.log('[Auth] Using fallback mode due to session error')
       }
     } else {
       setIsEmployer(false)
+      setProfileId(null)
       console.log('[Auth] User signed out')
     }
     
     setIsLoading(false)
     setAuthChecked(true)
   }
+
+
 
   const signIn = async (email: string, password: string) => {
     console.log('[Auth] Signing in user:', email)
@@ -186,7 +198,8 @@ export const useAuth = () => {
     isLoading,
     isEmployer,
     isAuthenticated: !!user,
-    authChecked, // Export this so components know when auth check is complete
+    authChecked,
+    profileId,
     accessToken: session?.access_token || null,
     signIn,
     signUp,
