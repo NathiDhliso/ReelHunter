@@ -1,5 +1,10 @@
 import { supabase } from './supabase'
-import type { PipelineStage, CandidatePipelinePosition, Profile } from '../types/supabase'
+import type { Database } from '../types/supabase'
+
+// Type aliases for better readability
+export type PipelineStage = Database['public']['Tables']['pipeline_stages']['Row']
+export type CandidatePipelinePosition = Database['public']['Tables']['candidate_pipeline_positions']['Row']
+export type Profile = Database['public']['Tables']['profiles']['Row']
 
 export interface PipelineCandidate {
   id: string

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Users, Plus, MoreVertical, Mail, Phone, MessageSquare, Calendar, Star, Clock, CheckCircle, AlertTriangle, X, XCircle } from 'lucide-react'
+import { Users, Plus, MoreVertical, Mail, MessageSquare, Calendar, Star, Clock, CheckCircle, AlertTriangle, XCircle, RefreshCw, UserCheck, FileText, Video, Award, Target } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../services/supabase'
 import { loadPipelineData, moveCandidateToStage, type PipelineStageWithCandidates, type PipelineCandidate } from '../../services/pipelineService'
@@ -12,11 +12,86 @@ interface MoveConfirmationModal {
   emailTemplate: string
 }
 
+// Enhanced pipeline stage configuration
+const PIPELINE_STAGE_CONFIG = {
+  'applied': {
+    name: 'Applied',
+    description: 'New applications received',
+    icon: Users,
+    color: 'blue',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    textColor: 'text-blue-700',
+    iconColor: 'text-blue-500'
+  },
+  'screening': {
+    name: 'Screening',
+    description: 'Initial qualification review',
+    icon: FileText,
+    color: 'indigo',
+    bgColor: 'bg-indigo-50',
+    borderColor: 'border-indigo-200',
+    textColor: 'text-indigo-700',
+    iconColor: 'text-indigo-500'
+  },
+  'interview': {
+    name: 'Interview',
+    description: 'Interview process',
+    icon: Video,
+    color: 'purple',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    textColor: 'text-purple-700',
+    iconColor: 'text-purple-500'
+  },
+  'final_review': {
+    name: 'Final Review',
+    description: 'Final evaluation stage',
+    icon: Target,
+    color: 'orange',
+    bgColor: 'bg-orange-50',
+    borderColor: 'border-orange-200',
+    textColor: 'text-orange-700',
+    iconColor: 'text-orange-500'
+  },
+  'offer': {
+    name: 'Offer',
+    description: 'Job offer extended',
+    icon: Award,
+    color: 'yellow',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
+    textColor: 'text-yellow-700',
+    iconColor: 'text-yellow-600'
+  },
+  'hired': {
+    name: 'Hired',
+    description: 'Successfully hired candidates',
+    icon: Star,
+    color: 'emerald',
+    bgColor: 'bg-emerald-50',
+    borderColor: 'border-emerald-200',
+    textColor: 'text-emerald-700',
+    iconColor: 'text-emerald-500'
+  },
+  'rejected': {
+    name: 'Not Selected',
+    description: 'Candidates not proceeding',
+    icon: XCircle,
+    color: 'red',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    textColor: 'text-red-700',
+    iconColor: 'text-red-500'
+  }
+}
+
 const DragDropPipeline: React.FC = () => {
-  const { accessToken, isAuthenticated, user, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth()
   
   const [stages, setStages] = useState<PipelineStageWithCandidates[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [draggedCandidate, setDraggedCandidate] = useState<PipelineCandidate | null>(null)
   const [draggedFromStage, setDraggedFromStage] = useState<string | null>(null)
   const [moveConfirmation, setMoveConfirmation] = useState<MoveConfirmationModal>({
@@ -46,6 +121,7 @@ const DragDropPipeline: React.FC = () => {
     } else {
       console.log("DragDropPipeline - User not authenticated, setting loading to false")
       setIsLoading(false)
+      setError("Please log in to access your pipeline")
     }
   }, [isAuthenticated, user, authLoading])
 
@@ -53,19 +129,34 @@ const DragDropPipeline: React.FC = () => {
     try {
       console.log("DragDropPipeline - Starting to load pipeline data for user:", user?.id)
       setIsLoading(true)
+      setError(null)
       
       // Get the user's profile to find their recruiter ID
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, role')
         .eq('user_id', user?.id)
-        .eq('role', 'recruiter')
         .single()
 
       console.log("DragDropPipeline - Profile query result:", { profile, error: profileError })
 
-      if (profileError || !profile) {
-        console.error('DragDropPipeline - Failed to get recruiter profile:', profileError)
+      if (profileError) {
+        console.error('DragDropPipeline - Failed to get profile:', profileError)
+        setError(`Failed to load profile: ${profileError.message}`)
+        setStages([])
+        return
+      }
+
+      if (!profile) {
+        console.error('DragDropPipeline - No profile found')
+        setError('Profile not found. Please contact support.')
+        setStages([])
+        return
+      }
+
+      if (profile.role !== 'recruiter') {
+        console.error('DragDropPipeline - User is not a recruiter:', profile.role)
+        setError('Access denied. This feature is only available to recruiters.')
         setStages([])
         return
       }
@@ -74,13 +165,52 @@ const DragDropPipeline: React.FC = () => {
       const pipelineData = await loadPipelineData(profile.id)
       console.log("DragDropPipeline - Pipeline data loaded:", pipelineData.length, "stages")
       setStages(pipelineData)
+      setError(null)
     } catch (error) {
       console.error('DragDropPipeline - Failed to load pipeline data:', error)
+      setError(error instanceof Error ? error.message : 'Failed to load pipeline data')
       setStages([])
     } finally {
       console.log("DragDropPipeline - Setting loading to false")
       setIsLoading(false)
     }
+  }
+
+  const retryLoad = () => {
+    if (isAuthenticated && user) {
+      loadPipelineDataForUser()
+    }
+  }
+
+  const getStageConfig = (stageName: string) => {
+    // Map database stage names to configuration
+    const normalizedStageId = stageName.toLowerCase().replace(/\s+/g, '_')
+    return PIPELINE_STAGE_CONFIG[normalizedStageId as keyof typeof PIPELINE_STAGE_CONFIG] || {
+      name: stageName,
+      description: 'Custom pipeline stage',
+      icon: Users,
+      color: 'gray',
+      bgColor: 'bg-gray-50',
+      borderColor: 'border-gray-200',
+      textColor: 'text-gray-700',
+      iconColor: 'text-gray-500'
+    }
+  }
+
+  const getCandidateStatusBadge = (candidate: PipelineCandidate) => {
+    const daysSinceUpdate = Math.floor((Date.now() - new Date(candidate.addedAt).getTime()) / (1000 * 60 * 60 * 24))
+    
+    if (daysSinceUpdate > 7) {
+      return <div className="w-2 h-2 bg-red-400 rounded-full" title="Stale - No activity for over a week" />
+    } else if (daysSinceUpdate > 3) {
+      return <div className="w-2 h-2 bg-yellow-400 rounded-full" title="Needs attention - No activity for 3+ days" />
+    } else {
+      return <div className="w-2 h-2 bg-green-400 rounded-full" title="Active - Recent activity" />
+    }
+  }
+
+  const getTotalCandidates = () => {
+    return stages.reduce((total, stage) => total + stage.candidates.length, 0)
   }
 
   const handleDragStart = (candidate: PipelineCandidate, stageId: string) => {
@@ -116,171 +246,33 @@ const DragDropPipeline: React.FC = () => {
       emailTemplate: toStage.auto_email_template || ''
     })
     setCandidateEmail(draggedCandidate.email)
-    setEmailError('')
-  }
-
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return emailRegex.test(email)
-  }
-
-  const sendPipelineEmail = async (
-    recipientEmail: string, 
-    subject: string, 
-    message: string,
-    candidateName: string,
-    stageName: string
-  ): Promise<boolean> => {
-    try {
-      setIsEmailSending(true)
-      
-      // Check if user is authenticated and has access token
-      if (!isAuthenticated || !accessToken) {
-        console.error('User not authenticated or access token not available')
-        return false
-      }
-      
-      // Call the pipeline email function
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-pipeline-email`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipientEmail,
-          candidateName,
-          stageName,
-          subject,
-          message,
-          recruiterName: user?.user_metadata?.full_name || 'ReelHunter Team',
-          companyName: user?.user_metadata?.company || 'ReelHunter'
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.text()
-        console.error('Email API error:', errorData)
-        throw new Error(`Failed to send email: ${response.status} - ${errorData}`)
-      }
-
-      const result = await response.json()
-      console.log('Email sent successfully:', result)
-      return true
-
-    } catch (error) {
-      console.error('Failed to send email:', error)
-      return false
-    } finally {
-      setIsEmailSending(false)
-    }
   }
 
   const confirmMove = async () => {
-    // Validate email
-    if (!candidateEmail.trim()) {
-      setEmailError('Email is required')
-      return
-    }
-
-    if (!validateEmail(candidateEmail)) {
-      setEmailError('Please enter a valid email address')
-      return
-    }
-
-    if (candidateEmail !== moveConfirmation.candidate?.email) {
-      setEmailError('Email does not match candidate record')
-      return
-    }
-
-    // Check authentication before proceeding
-    if (!isAuthenticated || !accessToken || !user) {
-      setEmailError('You must be logged in to move candidates')
-      return
-    }
+    if (!moveConfirmation.candidate || !draggedFromStage || !user) return
 
     try {
-      // Get the user's profile to find their recruiter ID
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('role', 'recruiter')
-        .single()
-
-      if (profileError || !profile) {
-        setEmailError('Failed to get recruiter profile')
-        return
-      }
-
-      // Perform the move
-      const targetStageId = stages.find(s => s.stage_name === moveConfirmation.toStage)?.id
+      setIsEmailSending(true)
       
-      if (!targetStageId || !draggedCandidate || !draggedFromStage) return
+      const targetStage = stages.find(s => s.stage_name === moveConfirmation.toStage)
+      if (!targetStage) return
 
       await moveCandidateToStage(
-        draggedCandidate.id,
+        moveConfirmation.candidate.id,
         draggedFromStage,
-        targetStageId,
-        profile.id
+        targetStage.id,
+        user.id || ''
       )
 
-      // Update local state
-      setStages(prevStages => {
-        const newStages = prevStages.map(stage => {
-          if (stage.id === draggedFromStage) {
-            return {
-              ...stage,
-              candidates: stage.candidates.filter(c => c.id !== draggedCandidate.id)
-            }
-          }
-          if (stage.id === targetStageId) {
-            return {
-              ...stage,
-              candidates: [...stage.candidates, {
-                ...draggedCandidate,
-                lastCommunication: new Date().toISOString()
-              }]
-            }
-          }
-          return stage
-        })
-        return newStages
-      })
-
-      // Send email if template exists
-      if (moveConfirmation.emailTemplate && moveConfirmation.candidate) {
-        const emailSent = await sendPipelineEmail(
-          candidateEmail,
-          `Application Update: ${moveConfirmation.toStage}`,
-          moveConfirmation.emailTemplate,
-          moveConfirmation.candidate.name,
-          moveConfirmation.toStage
-        )
-
-        if (emailSent) {
-          showNotification(
-            `✅ Candidate moved successfully`,
-            `${moveConfirmation.candidate?.name} moved to ${moveConfirmation.toStage} - Professional email sent`
-          )
-        } else {
-          showNotification(
-            `⚠️ Candidate moved with email warning`,
-            `${moveConfirmation.candidate?.name} moved to ${moveConfirmation.toStage} - Email delivery failed, please follow up manually`
-          )
-        }
-      } else {
-        showNotification(
-          `✅ Candidate moved successfully`,
-          `${moveConfirmation.candidate?.name} moved to ${moveConfirmation.toStage}`
-        )
-      }
-
-      // Reset state
+      // Refresh pipeline data
+      await loadPipelineDataForUser()
+      
       closeMoveConfirmation()
     } catch (error) {
-      console.error('Error moving candidate:', error)
+      console.error('Failed to move candidate:', error)
       setEmailError('Failed to move candidate. Please try again.')
+    } finally {
+      setIsEmailSending(false)
     }
   }
 
@@ -298,360 +290,273 @@ const DragDropPipeline: React.FC = () => {
     setDraggedFromStage(null)
   }
 
-  const showNotification = (title: string, message: string) => {
-    const notification = document.createElement('div')
-    notification.className = 'fixed top-4 right-4 bg-green-500 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm'
-    notification.innerHTML = `
-      <div class="flex items-center space-x-3">
-        <div class="flex-shrink-0">
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-          </svg>
-        </div>
-        <div>
-          <p class="font-semibold">${title}</p>
-          <p class="text-sm opacity-90">${message}</p>
-        </div>
-      </div>
-    `
-    document.body.appendChild(notification)
-    
-    setTimeout(() => {
-      notification.remove()
-    }, 5000)
-  }
-
-  const getTotalCandidates = () => {
-    return stages.reduce((total, stage) => total + stage.candidates.length, 0)
-  }
-
-  const getStageIcon = (stageName: string) => {
-    switch (stageName.toLowerCase()) {
-      case 'applied': return <Clock className="w-4 h-4" />
-      case 'screening': return <MessageSquare className="w-4 h-4" />
-      case 'interview': return <Users className="w-4 h-4" />
-      case 'final review': return <Star className="w-4 h-4" />
-      case 'offer': return <CheckCircle className="w-4 h-4" />
-      case 'hired': return <CheckCircle className="w-4 h-4" />
-      case 'rejected': return <XCircle className="w-4 h-4" />
-      default: return <Users className="w-4 h-4" />
-    }
-  }
-
-  // Show authentication warning if not logged in
-  if (!isAuthenticated && !authLoading) {
+  // Show loading spinner while auth is loading or pipeline is loading
+  if (authLoading || isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-6">
-          <div className="flex items-center space-x-3">
-            <AlertTriangle className="w-6 h-6 text-yellow-400" />
-            <div>
-              <h3 className="text-lg font-semibold text-yellow-400">Authentication Required</h3>
-              <p className="text-yellow-300">Please log in to access the candidate pipeline.</p>
-            </div>
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <RefreshCw className="w-8 h-8 text-primary-500 mx-auto mb-4 animate-spin" />
+            <h2 className="text-xl font-semibold text-text-primary mb-2">
+              {authLoading ? 'Authenticating...' : 'Loading Pipeline...'}
+            </h2>
+            <p className="text-text-muted">
+              {authLoading ? 'Verifying your credentials' : 'Fetching your candidate pipeline'}
+            </p>
           </div>
         </div>
       </div>
     )
   }
 
-  if (isLoading || authLoading) {
-    console.log("DragDropPipeline - Rendering loading state")
+  // Show error state
+  if (error) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
-          <p className="text-text-muted">Loading pipeline...</p>
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-text-primary mb-2">Unable to Load Pipeline</h2>
+            <p className="text-text-muted mb-4">{error}</p>
+            {isAuthenticated && (
+              <button
+                onClick={retryLoad}
+                className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+              >
+                Try Again
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
   }
 
-  console.log("DragDropPipeline - Rendering pipeline with stages:", stages.length)
+  // Show not authenticated state
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="w-16 h-16 text-text-muted mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-text-primary mb-2">Authentication Required</h2>
+            <p className="text-text-muted">Please log in to access your candidate pipeline.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Pipeline Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-text-primary">ReelCV Candidate Pipeline</h2>
-          <p className="text-text-secondary">
-            {getTotalCandidates()} ReelCV candidates • Drag to move stages • Professional email integration
-          </p>
+    <div className="max-w-full mx-auto space-y-6">
+      {/* Enhanced Pipeline Header */}
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Recruitment Pipeline</h1>
+            <p className="text-gray-600 mt-1">Manage candidates through your hiring process</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-500">
+              Total Candidates: {getTotalCandidates()}
+            </div>
+            <button
+              onClick={retryLoad}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Pipeline Progress Indicator */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {Object.entries(PIPELINE_STAGE_CONFIG).map(([key, config], index) => {
+            const stageData = stages.find(s => s.stage_name.toLowerCase().replace(/\s+/g, '_') === key)
+            const candidateCount = stageData?.candidates.length || 0
+            const Icon = config.icon
+            
+            return (
+              <div key={key} className="flex items-center gap-2 flex-shrink-0">
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${config.bgColor} ${config.borderColor} border`}>
+                  <Icon className={`w-4 h-4 ${config.iconColor}`} />
+                  <span className={`text-sm font-medium ${config.textColor}`}>
+                    {config.name} ({candidateCount})
+                  </span>
+                </div>
+                {index < Object.keys(PIPELINE_STAGE_CONFIG).length - 2 && (
+                  <div className="w-6 h-px bg-gray-300" />
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {/* Pipeline Stages */}
-      <div className="flex space-x-6 overflow-x-auto pb-4">
-        {stages.map(stage => (
-          <div
-            key={stage.id}
-            className="flex-shrink-0 w-80 bg-background-panel border border-gray-600 rounded-xl"
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, stage.id)}
-          >
-            {/* Stage Header */}
-            <div className="p-4 border-b border-gray-600">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-3">
-                  <div 
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: stage.stage_color }}
-                  />
-                  <div className="flex items-center space-x-2">
-                    {getStageIcon(stage.stage_name)}
-                    <h3 className="font-semibold text-text-primary">{stage.stage_name}</h3>
+      {/* Enhanced Pipeline Columns */}
+      <div className="flex gap-6 overflow-x-auto pb-6">
+        {stages.map((stage) => {
+          const stageConfig = getStageConfig(stage.stage_name)
+          const Icon = stageConfig.icon
+          
+          return (
+            <div
+              key={stage.id}
+              className={`flex-shrink-0 w-80 ${stageConfig.bgColor} ${stageConfig.borderColor} border rounded-lg`}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, stage.id)}
+            >
+              {/* Enhanced Stage Header */}
+              <div className={`p-4 border-b ${stageConfig.borderColor}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Icon className={`w-5 h-5 ${stageConfig.iconColor}`} />
+                    <h3 className={`font-semibold ${stageConfig.textColor}`}>
+                      {stage.stage_name}
+                    </h3>
                   </div>
-                  <span className="bg-background-card text-text-muted px-2 py-1 rounded-full text-sm">
+                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${stageConfig.textColor} bg-white/50`}>
                     {stage.candidates.length}
-                  </span>
+                  </div>
                 </div>
-                <button className="text-text-muted hover:text-text-primary p-1 rounded">
-                  <MoreVertical className="w-4 h-4" />
+                <p className={`text-xs ${stageConfig.textColor} opacity-75`}>
+                  {stageConfig.description}
+                </p>
+              </div>
+
+              {/* Candidates List */}
+              <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
+                {stage.candidates.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Icon className={`w-8 h-8 ${stageConfig.iconColor} mx-auto mb-2 opacity-50`} />
+                    <p className={`text-sm ${stageConfig.textColor} opacity-75`}>
+                      No candidates in this stage
+                    </p>
+                  </div>
+                ) : (
+                  stage.candidates.map((candidate) => (
+                    <div
+                      key={candidate.id}
+                      draggable
+                      onDragStart={() => handleDragStart(candidate, stage.id)}
+                      className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-move group"
+                    >
+                      {/* Enhanced Candidate Card */}
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                            {candidate.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-gray-900 text-sm">
+                              {candidate.name}
+                            </h4>
+                            <p className="text-xs text-gray-500">
+                              Candidate
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {getCandidateStatusBadge(candidate)}
+                          <button className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <MoreVertical className="w-4 h-4 text-gray-400" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Candidate Details */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <Mail className="w-3 h-3" />
+                          <span className="truncate">{candidate.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <Clock className="w-3 h-3" />
+                          <span>Added {new Date(candidate.addedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+
+                      {/* Quick Actions */}
+                      <div className="flex gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                          <Mail className="w-3 h-3" />
+                          Email
+                        </button>
+                        <button className="flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200">
+                          <Calendar className="w-3 h-3" />
+                          Schedule
+                        </button>
+                        <button className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200">
+                          <MessageSquare className="w-3 h-3" />
+                          Note
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Add Candidate Button */}
+              <div className="p-4 border-t border-gray-200">
+                <button className={`w-full flex items-center justify-center gap-2 py-2 px-4 border-2 border-dashed ${stageConfig.borderColor} ${stageConfig.textColor} rounded-lg hover:bg-white/50 transition-colors`}>
+                  <Plus className="w-4 h-4" />
+                  Add Candidate
                 </button>
               </div>
-              
-              {stage.auto_email_template && (
-                <div className="flex items-center space-x-2 text-xs text-text-muted">
-                  <Mail className="w-3 h-3" />
-                  <span>Auto-email enabled</span>
-                </div>
-              )}
             </div>
-
-            {/* Candidates */}
-            <div className="p-4 space-y-3 min-h-[200px]">
-              {stage.candidates.map(candidate => (
-                <div
-                  key={candidate.id}
-                  draggable
-                  onDragStart={() => handleDragStart(candidate, stage.id)}
-                  className="bg-background-card border border-gray-600 rounded-lg p-4 cursor-move hover:border-primary-500 transition-all duration-200 group"
-                >
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center">
-                      <span className="text-white text-sm font-semibold">{candidate.avatar}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-text-primary truncate">{candidate.name}</p>
-                      <p className="text-sm text-text-muted truncate">{candidate.email}</p>
-                    </div>
-                  </div>
-                  
-                  {candidate.notes && (
-                    <p className="text-sm text-text-secondary mb-3 line-clamp-2">{candidate.notes}</p>
-                  )}
-                  
-                  <div className="flex items-center justify-between text-xs text-text-muted">
-                    <span>Added {new Date(candidate.addedAt).toLocaleDateString()}</span>
-                    {candidate.lastCommunication && (
-                      <div className="flex items-center space-x-1">
-                        <Mail className="w-3 h-3" />
-                        <span>Email Sent</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Quick Actions */}
-                  <div className="flex items-center space-x-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <button className="flex items-center space-x-1 text-xs text-primary-400 hover:text-primary-300">
-                      <Mail className="w-3 h-3" />
-                      <span>Email</span>
-                    </button>
-                    <button className="flex items-center space-x-1 text-xs text-green-400 hover:text-green-300">
-                      <Phone className="w-3 h-3" />
-                      <span>Call</span>
-                    </button>
-                    <button className="flex items-center space-x-1 text-xs text-blue-400 hover:text-blue-300">
-                      <Calendar className="w-3 h-3" />
-                      <span>Schedule</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-              
-              {stage.candidates.length === 0 && (
-                <div className="text-center py-8 text-text-muted">
-                  {getStageIcon(stage.stage_name)}
-                  <div className="mt-2">
-                    <p className="text-sm">No candidates in this stage</p>
-                    <p className="text-xs">Drag ReelCV candidates here to move them</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {/* Move Confirmation Modal */}
+      {/* Move Confirmation Modal - Enhanced */}
       {moveConfirmation.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={closeMoveConfirmation} />
-          <div className="relative bg-background-panel border border-gray-600 rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-yellow-500/10 rounded-lg">
-                  <AlertTriangle className="w-6 h-6 text-yellow-400" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-semibold text-text-primary">Confirm Stage Move</h2>
-                  <p className="text-text-muted">Verify candidate details before moving</p>
-                </div>
-              </div>
-              <button
-                onClick={closeMoveConfirmation}
-                className="text-text-muted hover:text-text-primary p-2 hover:bg-background-card rounded-lg transition-colors duration-200"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Candidate Info */}
-            <div className="bg-background-card border border-gray-600 rounded-xl p-6 mb-6">
-              <div className="flex items-center space-x-4 mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center">
-                  <span className="text-white font-semibold text-lg">
-                    {moveConfirmation.candidate?.avatar}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-text-primary">
-                    {moveConfirmation.candidate?.name}
-                  </h3>
-                  <p className="text-text-muted">{moveConfirmation.candidate?.email}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-4 text-sm">
-                <div className="flex items-center space-x-2">
-                  <span className="text-text-muted">From:</span>
-                  <span className="font-medium text-text-primary">{moveConfirmation.fromStage}</span>
-                </div>
-                <span className="text-text-muted">→</span>
-                <div className="flex items-center space-x-2">
-                  <span className="text-text-muted">To:</span>
-                  <span className={`font-medium ${
-                    moveConfirmation.toStage === 'Rejected' ? 'text-red-400' : 'text-primary-400'
-                  }`}>
-                    {moveConfirmation.toStage}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Email Verification */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                Verify Candidate Email *
-              </label>
-              <input
-                type="email"
-                value={candidateEmail}
-                onChange={(e) => {
-                  setCandidateEmail(e.target.value)
-                  setEmailError('')
-                }}
-                placeholder="Enter candidate's email to confirm"
-                className={`w-full px-4 py-3 bg-background-card border rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 transition-colors duration-200 ${
-                  emailError 
-                    ? 'border-red-500 focus:ring-red-500' 
-                    : 'border-gray-600 focus:ring-primary-500'
-                }`}
-              />
-              {emailError && (
-                <p className="mt-2 text-sm text-red-400 flex items-center space-x-1">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>{emailError}</span>
-                </p>
-              )}
-              <p className="mt-2 text-xs text-text-muted">
-                This email verification prevents accidental moves and ensures communication accuracy
-              </p>
-            </div>
-
-            {/* Email Template Preview */}
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Move Candidate
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Move <strong>{moveConfirmation.candidate?.name}</strong> from{' '}
+              <span className="font-medium">{moveConfirmation.fromStage}</span> to{' '}
+              <span className="font-medium">{moveConfirmation.toStage}</span>?
+            </p>
+            
             {moveConfirmation.emailTemplate && (
-              <div className="mb-6">
-                <h4 className="text-sm font-medium text-text-primary mb-3 flex items-center space-x-2">
-                  <Mail className="w-4 h-4" />
-                  <span>Email Preview</span>
-                </h4>
-                <div className={`border rounded-xl p-4 ${
-                  moveConfirmation.toStage === 'Rejected' 
-                    ? 'bg-red-500/10 border-red-500/20' 
-                    : 'bg-blue-500/10 border-blue-500/20'
-                }`}>
-                  <p className={`text-sm italic ${
-                    moveConfirmation.toStage === 'Rejected' ? 'text-red-300' : 'text-blue-300'
-                  }`}>
-                    "{moveConfirmation.emailTemplate}"
-                  </p>
-                </div>
-                <p className="mt-2 text-xs text-text-muted">
-                  This professional email will be sent with delivery tracking
-                </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={candidateEmail}
+                  onChange={(e) => setCandidateEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="candidate@example.com"
+                />
+                {emailError && (
+                  <p className="text-red-600 text-sm mt-1">{emailError}</p>
+                )}
               </div>
             )}
-
-            {/* Security Notice */}
-            <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 mb-6">
-              <div className="flex items-center space-x-2 mb-2">
-                <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-green-400 font-medium">Professional Email Integration Features</span>
-              </div>
-              <ul className="text-green-300 text-sm space-y-1">
-                <li>• Professional email delivery with tracking</li>
-                <li>• Email verification prevents accidental moves</li>
-                <li>• Delivery confirmation and bounce handling</li>
-                <li>• All moves logged for audit trail</li>
-                <li>• Automatic candidate status updates</li>
-              </ul>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-600">
+            
+            <div className="flex gap-3">
+              <button
+                onClick={confirmMove}
+                disabled={isEmailSending}
+                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isEmailSending ? 'Moving...' : 'Confirm Move'}
+              </button>
               <button
                 onClick={closeMoveConfirmation}
-                className="px-6 py-3 text-text-secondary hover:text-text-primary transition-colors duration-200"
+                className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400"
               >
                 Cancel
               </button>
-              <button
-                onClick={confirmMove}
-                disabled={!candidateEmail.trim() || !!emailError || isEmailSending || !accessToken}
-                className={`px-8 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2 ${
-                  moveConfirmation.toStage === 'Rejected'
-                    ? 'bg-red-500 hover:bg-red-600 disabled:bg-gray-600'
-                    : 'bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600'
-                } disabled:cursor-not-allowed text-white`}
-              >
-                {isEmailSending ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Sending Email...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Confirm Move & Send Email</span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {getTotalCandidates() === 0 && (
-        <div className="bg-background-panel border border-gray-600 rounded-xl p-12 text-center">
-          <Users className="w-16 h-16 text-text-muted mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-text-primary mb-2">No candidates in pipeline</h3>
-          <p className="text-text-muted mb-6">Start by searching for candidates and adding them to your pipeline</p>
-          <button className="bg-primary-500 hover:bg-primary-600 text-white px-6 py-3 rounded-xl font-medium transition-colors duration-200">
-            Search Candidates
-          </button>
         </div>
       )}
     </div>
