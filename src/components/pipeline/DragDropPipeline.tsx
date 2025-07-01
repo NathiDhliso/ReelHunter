@@ -4,6 +4,50 @@ import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../services/supabase'
 import { loadPipelineData, moveCandidateToStage, type PipelineStageWithCandidates, type PipelineCandidate } from '../../services/pipelineService'
 
+// Pipeline stage configuration for UI rendering
+const PIPELINE_STAGE_CONFIG = {
+  applied: {
+    name: 'Applied',
+    description: 'New applications received',
+    icon: Users,
+    color: 'blue',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    textColor: 'text-blue-700',
+    iconColor: 'text-blue-500'
+  },
+  screening: {
+    name: 'Screening',
+    description: 'Initial qualification review',
+    icon: Users,
+    color: 'indigo',
+    bgColor: 'bg-indigo-50',
+    borderColor: 'border-indigo-200',
+    textColor: 'text-indigo-700',
+    iconColor: 'text-indigo-500'
+  },
+  interview: {
+    name: 'Interview',
+    description: 'Interview process',
+    icon: Users,
+    color: 'purple',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+    textColor: 'text-purple-700',
+    iconColor: 'text-purple-500'
+  },
+  offer: {
+    name: 'Offer',
+    description: 'Job offer extended',
+    icon: Users,
+    color: 'green',
+    bgColor: 'bg-green-50',
+    borderColor: 'border-green-200',
+    textColor: 'text-green-700',
+    iconColor: 'text-green-500'
+  }
+}
+
 interface MoveConfirmationModal {
   isOpen: boolean
   candidate: PipelineCandidate | null
@@ -71,7 +115,7 @@ const DragDropPipeline: React.FC = () => {
         // For now, use a default stage structure
         const defaultStages: PipelineStageWithCandidates[] = [
           {
-            id: 'applied',
+            id: crypto.randomUUID(),
             stage_name: 'Applied',
             stage_order: 1,
             stage_color: '#3B82F6',
@@ -83,7 +127,7 @@ const DragDropPipeline: React.FC = () => {
             recruiter_id: profileId
           },
           {
-            id: 'screening',
+            id: crypto.randomUUID(),
             stage_name: 'Screening',
             stage_order: 2,
             stage_color: '#F59E0B',
@@ -95,7 +139,7 @@ const DragDropPipeline: React.FC = () => {
             recruiter_id: profileId
           },
           {
-            id: 'interview',
+            id: crypto.randomUUID(),
             stage_name: 'Interview',
             stage_order: 3,
             stage_color: '#8B5CF6',
@@ -107,7 +151,7 @@ const DragDropPipeline: React.FC = () => {
             recruiter_id: profileId
           },
           {
-            id: 'offer',
+            id: crypto.randomUUID(),
             stage_name: 'Offer',
             stage_order: 4,
             stage_color: '#10B981',
@@ -289,7 +333,7 @@ const DragDropPipeline: React.FC = () => {
   const getStageConfig = (stageName: string) => {
     // Map database stage names to configuration
     const normalizedStageId = stageName.toLowerCase().replace(/\s+/g, '_')
-    const configs: Record<string, { name: string; description: string; icon: any; color: string; bgColor: string; borderColor: string; textColor: string; iconColor: string }> = {
+    const configs: Record<string, { name: string; description: string; icon: React.ComponentType<{ className?: string }>; color: string; bgColor: string; borderColor: string; textColor: string; iconColor: string }> = {
       applied: {
         name: stageName,
         description: 'New applications received',
