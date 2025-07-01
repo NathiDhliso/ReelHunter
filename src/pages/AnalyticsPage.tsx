@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import DashboardLayout from '../components/layout/DashboardLayout'
-import { BarChart3, TrendingUp, TrendingDown, Users, Clock, DollarSign, Target, Calendar, Filter, Download, AlertTriangle } from 'lucide-react'
-import { useAuth } from '../hooks/useAuth'
+import { BarChart3, TrendingUp, TrendingDown, Users, Clock, DollarSign, Target, Calendar, Filter, Download } from 'lucide-react'
 
 interface MetricCard {
   title: string
@@ -12,16 +11,13 @@ interface MetricCard {
 }
 
 const AnalyticsPage: React.FC = () => {
-  const { isAuthenticated } = useAuth()
   const [timeRange, setTimeRange] = useState('30d')
   const [metrics, setMetrics] = useState<MetricCard[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadAnalyticsData()
-    }
-  }, [isAuthenticated, timeRange])
+    loadAnalyticsData()
+  }, [timeRange])
 
   const loadAnalyticsData = async () => {
     try {
@@ -88,21 +84,7 @@ const AnalyticsPage: React.FC = () => {
     }
   }
 
-  if (!isAuthenticated) {
-    return (
-      <DashboardLayout>
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-center">
-              <AlertTriangle className="w-16 h-16 text-text-muted mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-text-primary mb-2">Authentication Required</h2>
-              <p className="text-text-muted">Please log in to view your analytics dashboard.</p>
-            </div>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
+
 
   if (isLoading) {
     return (

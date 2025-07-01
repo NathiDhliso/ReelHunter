@@ -1,36 +1,44 @@
-import React from 'react'
+import React, { memo } from 'react'
 
 interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg'
-  color?: 'primary' | 'white'
+  color?: 'primary' | 'white' | 'gray'
+  className?: string
 }
 
-const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({ 
+const LoadingSpinner: React.FC<LoadingSpinnerProps> = memo(({ 
   size = 'md', 
-  color = 'primary' 
+  color = 'primary',
+  className = ''
 }) => {
   const sizeClasses = {
     sm: 'w-4 h-4',
-    md: 'w-6 h-6',
+    md: 'w-6 h-6', 
     lg: 'w-8 h-8'
   }
-
+  
   const colorClasses = {
     primary: 'text-primary-500',
-    white: 'text-white'
+    white: 'text-white',
+    gray: 'text-gray-400'
   }
-
-  // Debug: Log spinner render details
-  console.log('[LoadingSpinner] Render', { size, color })
-
+  
   return (
-    <div className="flex items-center justify-center">
-      <div className={`
-        animate-spin rounded-full border-2 border-gray-300 border-t-current
-        ${sizeClasses[size]} ${colorClasses[color]}
-      `} />
+    <div 
+      className={`
+        inline-block animate-spin rounded-full border-2 border-solid border-current border-r-transparent
+        ${sizeClasses[size]} 
+        ${colorClasses[color]}
+        ${className}
+      `}
+      role="status"
+      aria-label="Loading"
+    >
+      <span className="sr-only">Loading...</span>
     </div>
   )
-}
+})
+
+LoadingSpinner.displayName = 'LoadingSpinner'
 
 export default LoadingSpinner

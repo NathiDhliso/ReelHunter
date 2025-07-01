@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import DashboardLayout from '../components/layout/DashboardLayout'
-import { BarChart3, TrendingUp, TrendingDown, Users, Clock, DollarSign, Target, Star, MessageSquare, Award, AlertTriangle, CheckCircle, X, Send, RefreshCw, Lightbulb, Shield, Eye, EyeOff } from 'lucide-react'
-import { useAuth } from '../hooks/useAuth'
+import { TrendingUp, TrendingDown, Users, Clock, Target, Star, MessageSquare, Award, RefreshCw } from 'lucide-react'
 
 interface RecruiterStats {
   totalReviews: number
@@ -17,52 +16,19 @@ interface RecruiterStats {
   candidateNPS: number
 }
 
-interface Review {
-  id: string
-  candidateName: string
-  jobTitle: string
-  rating: number
-  feedback: string
-  date: string
-  communicationRating: number
-  professionalismRating: number
-  roleAccuracyRating: number
-  isPublic: boolean
-  disputed: boolean
-}
-
-interface AIInsight {
-  type: 'improvement' | 'strength' | 'warning'
-  category: string
-  title: string
-  description: string
-  actionItems: string[]
-  priority: 'high' | 'medium' | 'low'
-}
-
 const MyStatsPage: React.FC = () => {
-  const { isAuthenticated, user } = useAuth()
   const [stats, setStats] = useState<RecruiterStats | null>(null)
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [aiInsights, setAiInsights] = useState<AIInsight[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedReview, setSelectedReview] = useState<Review | null>(null)
-  const [disputeModalOpen, setDisputeModalOpen] = useState(false)
-  const [disputeReason, setDisputeReason] = useState('')
-  const [disputeDetails, setDisputeDetails] = useState('')
-  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false)
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadStatsData()
-    }
-  }, [isAuthenticated])
+    loadStatsData()
+  }, [])
 
   const loadStatsData = async () => {
     try {
       setIsLoading(true)
       // TODO: Implement actual API calls to load recruiter stats
-      // For now, show empty state
+      // For now, show sample data
       setStats({
         totalReviews: 0,
         avgCommunication: 0,
@@ -76,8 +42,6 @@ const MyStatsPage: React.FC = () => {
         responseTime: 0,
         candidateNPS: 0
       })
-      setReviews([])
-      setAiInsights([])
     } catch (error) {
       console.error('Failed to load stats data:', error)
     } finally {
@@ -112,105 +76,6 @@ const MyStatsPage: React.FC = () => {
         }`}
       />
     ))
-  }
-
-  const getInsightIcon = (type: string) => {
-    switch (type) {
-      case 'improvement': return <Lightbulb className="w-5 h-5 text-text-primary" />
-      case 'strength': return <CheckCircle className="w-5 h-5 text-primary-400" />
-      case 'warning': return <AlertTriangle className="w-5 h-5 text-text-secondary" />
-      default: return <Lightbulb className="w-5 h-5 text-text-primary" />
-    }
-  }
-
-  const getInsightColor = (type: string) => {
-    switch (type) {
-      case 'improvement': return 'bg-background-card border-gray-600'
-      case 'strength': return 'bg-primary-500/10 border-primary-500/20'
-      case 'warning': return 'bg-background-card border-gray-600'
-      default: return 'bg-background-card border-gray-600'
-    }
-  }
-
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'high': return <span className="px-2 py-1 bg-background-card text-text-primary text-xs font-semibold rounded-full border border-gray-600">HIGH</span>
-      case 'medium': return <span className="px-2 py-1 bg-background-card text-text-secondary text-xs font-semibold rounded-full border border-gray-600">MEDIUM</span>
-      case 'low': return <span className="px-2 py-1 bg-background-card text-text-muted text-xs font-semibold rounded-full border border-gray-600">LOW</span>
-      default: return null
-    }
-  }
-
-  const handleDisputeReview = (review: Review) => {
-    setSelectedReview(review)
-    setDisputeModalOpen(true)
-  }
-
-  const submitDispute = async () => {
-    if (!selectedReview || !disputeReason.trim()) return
-
-    setIsSubmittingDispute(true)
-    
-    try {
-      // TODO: Implement actual dispute submission
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // Update review as disputed
-      setReviews(prev => prev.map(review => 
-        review.id === selectedReview.id 
-          ? { ...review, disputed: true }
-          : review
-      ))
-      
-      // Close modal and reset
-      setDisputeModalOpen(false)
-      setDisputeReason('')
-      setDisputeDetails('')
-      setSelectedReview(null)
-      
-      // Show success notification
-      showNotification('Dispute Submitted', 'Your dispute has been submitted for review. We will investigate and respond within 3-5 business days.')
-      
-    } catch (error) {
-      console.error('Failed to submit dispute:', error)
-      showNotification('Dispute Failed', 'Failed to submit dispute. Please try again.')
-    } finally {
-      setIsSubmittingDispute(false)
-    }
-  }
-
-  const showNotification = (title: string, message: string) => {
-    const notification = document.createElement('div')
-    notification.className = 'fixed top-4 right-4 bg-primary-500 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm'
-    notification.innerHTML = `
-      <div class="flex items-center space-x-3">
-        <div class="flex-shrink-0">
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-          </svg>
-        </div>
-        <div>
-          <p class="font-semibold">${title}</p>
-          <p class="text-sm opacity-90">${message}</p>
-        </div>
-      </div>
-    `
-    document.body.appendChild(notification)
-    setTimeout(() => notification.remove(), 5000)
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <AlertTriangle className="w-16 h-16 text-text-muted mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-text-primary mb-2">Authentication Required</h2>
-            <p className="text-text-muted">Please log in to view your stats and reviews.</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
   }
 
   if (isLoading) {
